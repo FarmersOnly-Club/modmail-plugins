@@ -31,14 +31,17 @@ class AutoSubscribe(commands.Cog):
         self.user_id = int(config.get("user_id", self.user_id))
         self.bump_message = config.get("bump_message", self.bump_message)
 
-    @commands.Cog.listener()
-    async def on_thread_ready(self, thread, creator, category, initial_message):
+    async def _subscribe_thread(self, thread):
         thread_id = str(thread.id)
         mention = f"<@{self.user_id}>"
-        subscriptions = self.bot.config.setdefault("subscriptions", {})
-        thread_subscriptions = subscriptions.setdefault(thread_id, [])
 
-        if mention not in thread_subscriptions:
+        subscriptions = self.bot.config["subscriptions"]
+        if thread_id not in subscriptions:
+            subscriptions[thread_id] = []
+
+        thread_subscriptions = subscriptions[thread_id]
+        subscribed = mention in thread_subscriptions
+        if not subscribed:
             thread_subscriptions.append(mention)
             await self.bot.config.update()
 
@@ -47,6 +50,12 @@ class AutoSubscribe(commands.Cog):
                 f"{mention} {self.bump_message}",
                 allowed_mentions=discord.AllowedMentions(users=True),
             )
+
+        return subscribed
+
+    @commands.Cog.listener()
+    async def on_thread_ready(self, thread, creator, category, initial_message):
+        await self._subscribe_thread(thread)
 
     @commands.group(name="autosubscribe", invoke_without_command=True)
     @checks.has_permissions(PermissionLevel.ADMINISTRATOR)
@@ -73,6 +82,15 @@ class AutoSubscribe(commands.Cog):
         self.bump_message = message
         await self._update_db()
         await ctx.send(f"AutoSubscribe bump message set to `{self.bump_message}`." if self.bump_message else "AutoSubscribe bump message disabled.")
+
+    @autosubscribe.command(name="current")
+    @checks.has_permissions(PermissionLevel.ADMINISTRATOR)
+    @checks.thread_only()
+    async def subscribe_current(self, ctx):
+        """Subscribe the configured user to the current thread for testing/backfill."""
+        already_subscribed = await self._subscribe_thread(ctx.thread)
+        status = "was already subscribed" if already_subscribed else "is now subscribed"
+        await ctx.send(f"<@{self.user_id}> {status} to this thread.")
 
 
 async def setup(bot):
