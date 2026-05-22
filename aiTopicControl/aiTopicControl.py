@@ -104,13 +104,18 @@ class AiTopicControl(commands.Cog):
                 reply_ctx = ctx
                 break
 
-        if reply_ctx is None or getattr(reply_ctx, "command", None) is None:
+        if reply_ctx is None:
             return
 
-        # Only act in Modmail threads and only after the sender passes normal support perms.
+        # If `?r` was not expanded as an alias, ctx.command can be None. That is
+        # still a valid signal to disable AI, but permission checking must be
+        # done against the underlying `reply` command name rather than
+        # ctx.command.qualified_name.
         try:
-            is_thread = await checks.thread_only().predicate(reply_ctx)
-            has_perms = await checks.has_permissions(PermissionLevel.SUPPORTER).predicate(reply_ctx)
+            if getattr(reply_ctx, "thread", None) is None:
+                reply_ctx.thread = await self.bot.threads.find(channel=message.channel)
+            is_thread = reply_ctx.thread is not None
+            has_perms = await checks.check_permissions(reply_ctx, "reply")
         except Exception:
             return
 
