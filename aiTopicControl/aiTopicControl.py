@@ -81,17 +81,36 @@ class AiTopicControl(commands.Cog):
     async def _disable_for_staff_reply(self, message: discord.Message):
         if message.author.bot or not isinstance(message.channel, discord.TextChannel):
             return
-        if not self._is_staff_reply_command(message.content):
+
+        raw_is_r = self._is_staff_reply_command(message.content)
+        if message.content.strip().lower().startswith(tuple(f"{p}impersonate" for p in self._prefixes())):
             return
 
-        ctx = await self.bot.get_context(message)
-        if not ctx.valid:
+        # Modmail supports user-defined aliases. `?r` is commonly an alias to
+        # `?reply`, and bot.get_context() does not expand those aliases. Use the
+        # Modmail bot helper that returns alias-expanded contexts so `?r` and
+        # `?reply` are treated the same for AI-disabling purposes.
+        try:
+            ctxs = await self.bot.get_contexts(message)
+        except AttributeError:
+            ctx = await self.bot.get_context(message)
+            ctxs = [ctx]
+
+        reply_ctx = None
+        for ctx in ctxs:
+            command_name = getattr(getattr(ctx, "command", None), "qualified_name", "")
+            invoked_with = getattr(ctx, "invoked_with", "")
+            if raw_is_r or command_name == "reply" or invoked_with == "reply":
+                reply_ctx = ctx
+                break
+
+        if reply_ctx is None or getattr(reply_ctx, "command", None) is None:
             return
 
         # Only act in Modmail threads and only after the sender passes normal support perms.
         try:
-            is_thread = await checks.thread_only().predicate(ctx)
-            has_perms = await checks.has_permissions(PermissionLevel.SUPPORTER).predicate(ctx)
+            is_thread = await checks.thread_only().predicate(reply_ctx)
+            has_perms = await checks.has_permissions(PermissionLevel.SUPPORTER).predicate(reply_ctx)
         except Exception:
             return
 
