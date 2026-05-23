@@ -141,6 +141,31 @@ class AiTopicControl(commands.Cog):
     async def on_message(self, message: discord.Message):
         await self._disable_for_staff_reply(message)
 
+
+    @commands.command(name="r")
+    @checks.has_permissions(PermissionLevel.SUPPORTER)
+    @checks.thread_only()
+    async def r_reply(self, ctx, *, msg: str = ""):
+        """Reply to a Modmail thread and disable AI for this thread.
+
+        This intentionally owns `?r` instead of relying on the alias/listener path,
+        so staff replies always mark the topic before the user-facing reply is sent.
+        """
+        await self._set_ai_state(ctx.channel, enabled=False, actor=ctx.author)
+
+        reply_command = self.bot.get_command("reply")
+        if reply_command is None:
+            await ctx.send("Could not find the Modmail reply command.", delete_after=10)
+            return
+
+        try:
+            await ctx.invoke(reply_command, msg=msg)
+        finally:
+            try:
+                await ctx.message.add_reaction("🔇")
+            except discord.HTTPException:
+                pass
+
     @commands.group(name="ai", aliases=["aitopic"], invoke_without_command=True)
     @checks.has_permissions(PermissionLevel.SUPPORTER)
     @checks.thread_only()
