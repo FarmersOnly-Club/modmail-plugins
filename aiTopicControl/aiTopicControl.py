@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 import re
+import typing
 
 import discord
 from discord.ext import commands
@@ -78,11 +79,60 @@ class AiTopicControl(commands.Cog):
         await channel.edit(topic=new_topic, reason=f"AI {'enabled' if enabled else 'disabled'} by {actor}")
         return True
 
+    async def _set_ai_state_background(
+        self,
+        channel: discord.TextChannel,
+        enabled: bool,
+        actor: discord.abc.User,
+        source_message: typing.Optional[discord.Message] = None,
+    ):
+        """Best-effort topic update that must not block the staff reply path."""
+        try:
+            changed = await self._set_ai_state(channel, enabled=enabled, actor=actor)
+            if changed and source_message is not None:
+                try:
+                    await source_message.add_reaction("🔇" if not enabled else "🔊")
+                except discord.HTTPException:
+                    pass
+        except discord.Forbidden:
+            if source_message is not None:
+                try:
+                    await source_message.add_reaction("⚠️")
+                except discord.HTTPException:
+                    pass
+        except discord.HTTPException:
+            if source_message is not None:
+                try:
+                    await source_message.add_reaction("⚠️")
+                except discord.HTTPException:
+                    pass
+
+    def _schedule_ai_state(
+        self,
+        channel: discord.TextChannel,
+        enabled: bool,
+        actor: discord.abc.User,
+        source_message: typing.Optional[discord.Message] = None,
+    ):
+        self.bot.loop.create_task(
+            self._set_ai_state_background(
+                channel,
+                enabled=enabled,
+                actor=actor,
+                source_message=source_message,
+            )
+        )
+
     async def _disable_for_staff_reply(self, message: discord.Message):
         if message.author.bot or not isinstance(message.channel, discord.TextChannel):
             return
 
         raw_is_r = self._is_staff_reply_command(message.content)
+        if raw_is_r:
+            # The explicit `?r` command owns this path. Avoid doing alias/context
+            # resolution and a topic update in the on_message listener before
+            # Modmail gets to process the reply command.
+            return
         if message.content.strip().lower().startswith(tuple(f"{p}impersonate" for p in self._prefixes())):
             return
 
@@ -122,20 +172,7 @@ class AiTopicControl(commands.Cog):
         if not is_thread or not has_perms:
             return
 
-        try:
-            changed = await self._set_ai_state(message.channel, enabled=False, actor=message.author)
-            if changed:
-                await message.add_reaction("🔇")
-        except discord.Forbidden:
-            try:
-                await message.add_reaction("⚠️")
-            except discord.HTTPException:
-                pass
-        except discord.HTTPException:
-            try:
-                await message.add_reaction("⚠️")
-            except discord.HTTPException:
-                pass
+        self._schedule_ai_state(message.channel, enabled=False, actor=message.author, source_message=message)
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -149,22 +186,16 @@ class AiTopicControl(commands.Cog):
         """Reply to a Modmail thread and disable AI for this thread.
 
         This intentionally owns `?r` instead of relying on the alias/listener path,
-        so staff replies always mark the topic before the user-facing reply is sent.
+        so the user-facing reply is not delayed by the AI topic update.
         """
-        await self._set_ai_state(ctx.channel, enabled=False, actor=ctx.author)
+        self._schedule_ai_state(ctx.channel, enabled=False, actor=ctx.author, source_message=ctx.message)
 
         reply_command = self.bot.get_command("reply")
         if reply_command is None:
             await ctx.send("Could not find the Modmail reply command.", delete_after=10)
             return
 
-        try:
-            await ctx.invoke(reply_command, msg=msg)
-        finally:
-            try:
-                await ctx.message.add_reaction("🔇")
-            except discord.HTTPException:
-                pass
+        await ctx.invoke(reply_command, msg=msg)
 
     @commands.group(name="ai", aliases=["aitopic"], invoke_without_command=True)
     @checks.has_permissions(PermissionLevel.SUPPORTER)
