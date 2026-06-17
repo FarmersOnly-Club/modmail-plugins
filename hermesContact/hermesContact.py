@@ -322,7 +322,7 @@ class HermesContact(commands.Cog):
     @commands.command(name="hermescontactping")
     async def hermescontactping(self, ctx):
         """Confirm the Hermes contact bridge plugin is loaded and commands are registered."""
-        await ctx.send("Hermes contact bridge is loaded.")
+        await ctx.send("Hermes contact bridge is loaded. Version: setup-command-1.")
 
     async def _allow_channel_from_ctx(self, ctx, channel_ref: Optional[str], command_name: str):
         channel_id = self._parse_channel_id(ctx, channel_ref)
@@ -332,6 +332,11 @@ class HermesContact(commands.Cog):
         allowed.add(str(channel_id))
         await self._save_allowed_channels(allowed)
         await ctx.send(f"Hermes contact bridge enabled in channel `{channel_id}`.")
+
+    @commands.command(name="hcsetup")
+    async def hcsetup(self, ctx, *, channel_ref=None):
+        """Simple setup command for allowing a bridge channel."""
+        await self._allow_channel_from_ctx(ctx, channel_ref, "hcsetup")
 
     @commands.command(
         name="hcontactallow",
