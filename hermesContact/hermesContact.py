@@ -201,10 +201,21 @@ class HermesContact(commands.Cog):
         command, _, arg = content.partition(" ")
         command = command.lower()
         arg = arg.strip() or None
-        if command not in {"?hcontactallow", "?hcontactdeny", "?hcontactchannels", "?hcontactsender"}:
+        if command not in {
+            "?hcontactallow",
+            "?hermescontactallow",
+            "?hcontactdeny",
+            "?hcontactchannels",
+            "?hcontactsender",
+            "?hermescontactping",
+        }:
             return False
 
         ctx = await self.bot.get_context(message)
+        if command == "?hermescontactping":
+            await message.channel.send("Hermes contact bridge listener is loaded.")
+            return True
+
         try:
             allowed = await checks.check_permissions(ctx, command.removeprefix("?"))
         except Exception:
@@ -213,7 +224,7 @@ class HermesContact(commands.Cog):
             await message.channel.send("You do not have permission to manage the Hermes contact bridge.")
             return True
 
-        if command == "?hcontactallow":
+        if command in {"?hcontactallow", "?hermescontactallow"}:
             channel_id = self._parse_channel_id(ctx, arg)
             if channel_id is None:
                 await message.channel.send("Usage: `?hcontactallow [channel_id-or-#channel]`")
@@ -299,7 +310,12 @@ class HermesContact(commands.Cog):
             return int(match.group(1) or match.group(2))
         return None
 
-    @commands.command(name="hcontactallow", usage="[channel_id_or_mention]")
+    @commands.command(name="hermescontactping")
+    async def hermescontactping(self, ctx):
+        """Confirm the Hermes contact bridge plugin is loaded and commands are registered."""
+        await ctx.send("Hermes contact bridge is loaded.")
+
+    @commands.command(name="hcontactallow", aliases=["hermescontactallow"], usage="[channel_id_or_mention]")
     @checks.has_permissions(PermissionLevel.OWNER)
     async def hcontactallow(self, ctx, channel_ref: Optional[str] = None):
         """Allow Hermes bridge contact commands in a channel."""
