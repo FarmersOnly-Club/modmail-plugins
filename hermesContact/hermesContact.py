@@ -219,7 +219,7 @@ class HermesContact(commands.Cog):
         try:
             allowed = await checks.check_permissions(ctx, command.removeprefix("?"))
         except Exception:
-            allowed = await self.bot.is_owner(message.author)
+            allowed = self._admin_allowed(ctx)
         if not allowed:
             await message.channel.send("You do not have permission to manage the Hermes contact bridge.")
             return True
@@ -301,6 +301,13 @@ class HermesContact(commands.Cog):
             return await message.channel.send("Missing user.")
         await self._create_contact(message, user_id, silent, initial)
 
+    def _admin_allowed(self, ctx) -> bool:
+        if ctx.author.id in getattr(self.bot, "bot_owner_ids", []):
+            return True
+        if ctx.guild == self.bot.modmail_guild and ctx.channel.permissions_for(ctx.author).administrator:
+            return True
+        return False
+
     def _parse_channel_id(self, ctx, channel_ref: Optional[str]) -> Optional[int]:
         if channel_ref is None:
             return ctx.channel.id
@@ -316,9 +323,10 @@ class HermesContact(commands.Cog):
         await ctx.send("Hermes contact bridge is loaded.")
 
     @commands.command(name="hcontactallow", aliases=["hermescontactallow"], usage="[channel_id_or_mention]")
-    @checks.has_permissions(PermissionLevel.OWNER)
     async def hcontactallow(self, ctx, channel_ref: Optional[str] = None):
         """Allow Hermes bridge contact commands in a channel."""
+        if not self._admin_allowed(ctx):
+            return await ctx.send("You need bot owner or Discord Administrator permission to manage the Hermes contact bridge.")
         channel_id = self._parse_channel_id(ctx, channel_ref)
         if channel_id is None:
             return await ctx.send("Usage: `?hcontactallow [channel_id-or-#channel]`")
@@ -328,9 +336,10 @@ class HermesContact(commands.Cog):
         await ctx.send(f"Hermes contact bridge enabled in channel `{channel_id}`.")
 
     @commands.command(name="hcontactdeny", usage="[channel_id_or_mention]")
-    @checks.has_permissions(PermissionLevel.OWNER)
     async def hcontactdeny(self, ctx, channel_ref: Optional[str] = None):
         """Remove a channel from Hermes bridge contact commands."""
+        if not self._admin_allowed(ctx):
+            return await ctx.send("You need bot owner or Discord Administrator permission to manage the Hermes contact bridge.")
         channel_id = self._parse_channel_id(ctx, channel_ref)
         if channel_id is None:
             return await ctx.send("Usage: `?hcontactdeny [channel_id-or-#channel]`")
