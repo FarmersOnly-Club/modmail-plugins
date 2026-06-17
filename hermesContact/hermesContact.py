@@ -196,7 +196,8 @@ class HermesContact(commands.Cog):
         # This intentionally does NOT ignore bot/webhook authors; that is the point of the bridge.
         if message.guild is None or message.guild != self.bot.modmail_guild:
             return
-        if not message.content.strip().startswith(self.COMMAND):
+        content = message.content.strip()
+        if content != self.COMMAND and not content.startswith(self.COMMAND + " "):
             return
         if message.author == self.bot.user:
             # Avoid loops if this Modmail bot itself ever echoes the bridge command.
@@ -211,21 +212,34 @@ class HermesContact(commands.Cog):
             return await message.channel.send("Missing user.")
         await self._create_contact(message, user_id, silent, initial)
 
-    @commands.command(name="hcontactallow", usage="[channel_id]")
+    def _parse_channel_id(self, ctx, channel_ref: Optional[str]) -> Optional[int]:
+        if channel_ref is None:
+            return ctx.channel.id
+        channel_ref = channel_ref.strip()
+        match = re.match(r"^<#(\d+)>$|^(\d+)$", channel_ref)
+        if match:
+            return int(match.group(1) or match.group(2))
+        return None
+
+    @commands.command(name="hcontactallow", usage="[channel_id_or_mention]")
     @checks.has_permissions(PermissionLevel.OWNER)
-    async def hcontactallow(self, ctx, channel_id: Optional[int] = None):
+    async def hcontactallow(self, ctx, channel_ref: Optional[str] = None):
         """Allow Hermes bridge contact commands in a channel."""
-        channel_id = channel_id or ctx.channel.id
+        channel_id = self._parse_channel_id(ctx, channel_ref)
+        if channel_id is None:
+            return await ctx.send("Usage: `?hcontactallow [channel_id-or-#channel]`")
         allowed = self._allowed_channels()
         allowed.add(str(channel_id))
         await self._save_allowed_channels(allowed)
         await ctx.send(f"Hermes contact bridge enabled in channel `{channel_id}`.")
 
-    @commands.command(name="hcontactdeny", usage="[channel_id]")
+    @commands.command(name="hcontactdeny", usage="[channel_id_or_mention]")
     @checks.has_permissions(PermissionLevel.OWNER)
-    async def hcontactdeny(self, ctx, channel_id: Optional[int] = None):
+    async def hcontactdeny(self, ctx, channel_ref: Optional[str] = None):
         """Remove a channel from Hermes bridge contact commands."""
-        channel_id = channel_id or ctx.channel.id
+        channel_id = self._parse_channel_id(ctx, channel_ref)
+        if channel_id is None:
+            return await ctx.send("Usage: `?hcontactdeny [channel_id-or-#channel]`")
         allowed = self._allowed_channels()
         allowed.discard(str(channel_id))
         await self._save_allowed_channels(allowed)
