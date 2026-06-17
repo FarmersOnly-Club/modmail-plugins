@@ -191,12 +191,90 @@ class HermesContact(commands.Cog):
 
         await message.channel.send(f"Created/updated Modmail thread for {user.mention}: {thread.channel.mention}")
 
+    async def _handle_admin_message(self, message: discord.Message, content: str) -> bool:
+        """Handle bridge admin commands from the listener as a fallback.
+
+        This keeps setup commands working even when the normal command processor
+        ignores the author or when the bridge command prefix overlaps with
+        `?hcontact`.
+        """
+        command, _, arg = content.partition(" ")
+        command = command.lower()
+        arg = arg.strip() or None
+        if command not in {"?hcontactallow", "?hcontactdeny", "?hcontactchannels", "?hcontactsender"}:
+            return False
+
+        ctx = await self.bot.get_context(message)
+        try:
+            allowed = await checks.check_permissions(ctx, command.removeprefix("?"))
+        except Exception:
+            allowed = await self.bot.is_owner(message.author)
+        if not allowed:
+            await message.channel.send("You do not have permission to manage the Hermes contact bridge.")
+            return True
+
+        if command == "?hcontactallow":
+            channel_id = self._parse_channel_id(ctx, arg)
+            if channel_id is None:
+                await message.channel.send("Usage: `?hcontactallow [channel_id-or-#channel]`")
+                return True
+            allowed_channels = self._allowed_channels()
+            allowed_channels.add(str(channel_id))
+            await self._save_allowed_channels(allowed_channels)
+            await message.channel.send(f"Hermes contact bridge enabled in channel `{channel_id}`.")
+            return True
+
+        if command == "?hcontactdeny":
+            channel_id = self._parse_channel_id(ctx, arg)
+            if channel_id is None:
+                await message.channel.send("Usage: `?hcontactdeny [channel_id-or-#channel]`")
+                return True
+            allowed_channels = self._allowed_channels()
+            allowed_channels.discard(str(channel_id))
+            await self._save_allowed_channels(allowed_channels)
+            await message.channel.send(f"Hermes contact bridge disabled in channel `{channel_id}`.")
+            return True
+
+        if command == "?hcontactchannels":
+            allowed_channels = self._allowed_channels()
+            if not allowed_channels:
+                await message.channel.send("No Hermes contact bridge channels are configured.")
+                return True
+            mentions = []
+            for channel_id in sorted(allowed_channels):
+                channel = self.bot.modmail_guild.get_channel(int(channel_id))
+                mentions.append(channel.mention if channel else f"`{channel_id}`")
+            await message.channel.send("Hermes contact bridge channels: " + ", ".join(mentions))
+            return True
+
+        if command == "?hcontactsender":
+            if arg is None:
+                await message.channel.send(f"Hermes contact bridge sender is `{self._sender_user_id()}`.")
+                return True
+            match = USER_RE.match(arg)
+            if not match:
+                await message.channel.send("Usage: `?hcontactsender [user-id-or-mention]`")
+                return True
+            user_id = int(match.group(1) or match.group(2))
+            try:
+                user = await self.bot.get_or_fetch_user(user_id)
+            except discord.NotFound:
+                await message.channel.send(f"Could not find user `{user_id}`.")
+                return True
+            await self._save_sender_user_id(user_id)
+            await message.channel.send(f"Hermes contact bridge sender set to {user} (`{user_id}`).")
+            return True
+
+        return False
+
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         # This intentionally does NOT ignore bot/webhook authors; that is the point of the bridge.
         if message.guild is None or message.guild != self.bot.modmail_guild:
             return
         content = message.content.strip()
+        if await self._handle_admin_message(message, content):
+            return
         if content != self.COMMAND and not content.startswith(self.COMMAND + " "):
             return
         if message.author == self.bot.user:
