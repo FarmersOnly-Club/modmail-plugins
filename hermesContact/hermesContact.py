@@ -204,6 +204,8 @@ class HermesContact(commands.Cog):
         if command not in {
             "?hcontactallow",
             "?hermescontactallow",
+            "?hermesbridgeallow",
+            "?hcbridgeallow",
             "?hcontactdeny",
             "?hcontactchannels",
             "?hcontactsender",
@@ -224,7 +226,7 @@ class HermesContact(commands.Cog):
             await message.channel.send("You do not have permission to manage the Hermes contact bridge.")
             return True
 
-        if command in {"?hcontactallow", "?hermescontactallow"}:
+        if command in {"?hcontactallow", "?hermescontactallow", "?hermesbridgeallow", "?hcbridgeallow"}:
             channel_id = self._parse_channel_id(ctx, arg)
             if channel_id is None:
                 await message.channel.send("Usage: `?hcontactallow [channel_id-or-#channel]`")
@@ -322,18 +324,23 @@ class HermesContact(commands.Cog):
         """Confirm the Hermes contact bridge plugin is loaded and commands are registered."""
         await ctx.send("Hermes contact bridge is loaded.")
 
-    @commands.command(name="hcontactallow", aliases=["hermescontactallow"], usage="[channel_id_or_mention]")
-    async def hcontactallow(self, ctx, channel_ref: Optional[str] = None):
-        """Allow Hermes bridge contact commands in a channel."""
-        if not self._admin_allowed(ctx):
-            return await ctx.send("You need bot owner or Discord Administrator permission to manage the Hermes contact bridge.")
+    async def _allow_channel_from_ctx(self, ctx, channel_ref: Optional[str], command_name: str):
         channel_id = self._parse_channel_id(ctx, channel_ref)
         if channel_id is None:
-            return await ctx.send("Usage: `?hcontactallow [channel_id-or-#channel]`")
+            return await ctx.send(f"Usage: `?{command_name} [channel_id-or-#channel]`")
         allowed = self._allowed_channels()
         allowed.add(str(channel_id))
         await self._save_allowed_channels(allowed)
         await ctx.send(f"Hermes contact bridge enabled in channel `{channel_id}`.")
+
+    @commands.command(
+        name="hcontactallow",
+        aliases=["hermescontactallow", "hermesbridgeallow", "hcbridgeallow"],
+        usage="[channel_id_or_mention]",
+    )
+    async def hcontactallow(self, ctx, channel_ref: Optional[str] = None):
+        """Allow Hermes bridge contact commands in a channel."""
+        await self._allow_channel_from_ctx(ctx, channel_ref, ctx.command.name)
 
     @commands.command(name="hcontactdeny", usage="[channel_id_or_mention]")
     async def hcontactdeny(self, ctx, channel_ref: Optional[str] = None):
