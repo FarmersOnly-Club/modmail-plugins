@@ -11,3 +11,33 @@ venv
 *.pyc
 
 .history
+
+# macOS Finder and AppleDouble metadata
+.DS_Store
+._*
+__MACOSX/
+.AppleDouble
+.LSOverride
+Icon?
+.Spotlight-V100/
+.Trashes/
+.TemporaryItems/
+.fseventsd/
+
+# Windows Explorer metadata
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux / editor backup metadata
+*~
+.nfs*
+.Trash-*/
+
+# Temporary editor swap files
+*.swp
+*.swo
+*.tmp
